@@ -1,0 +1,49 @@
+name: Terraform check
+
+# Reusable: terraform fmt + validate, with no cloud credentials (init -backend=false).
+# Safe to run on every PR, including Dependabot's.
+#
+#   jobs:
+#     terraform:
+#       uses: thelankankid/ci/.github/workflows/terraform-check.yml@<sha> # v1
+#       with:
+#         working-directory: infra/terraform
+#
+# Check name in the calling repo: `<job> / check` (e.g. `terraform / check`).
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Folder holding the root module.
+        type: string
+        default: terraform
+      terraform-version:
+        description: Terraform version (default the latest).
+        type: string
+        default: latest
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+      - name: Format
+        run: terraform fmt -check -recursive -diff
+      - name: Init (no backend, no credentials)
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        run: terraform validate -no-color
