@@ -1,0 +1,19 @@
+# Weekly, grouped, so updates arrive as one or two PRs instead of a stream.
+# github-actions also bumps the pinned SHAs of thelankankid/ci's workflows.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /           # one entry per package.json directory
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

@@ -1,0 +1,47 @@
+name: Hygiene
+
+# Reusable: the checks every repo gets, whatever its language.
+# - Workflow lint (actionlint).
+# - Every third-party action and reusable workflow pinned to a full commit SHA.
+# - No secrets in the tree (gitleaks; a repo can add .gitleaksignore for a reviewed false positive).
+#
+#   jobs:
+#     hygiene:
+#       uses: thelankankid/ci/.github/workflows/hygiene.yml@<sha> # v1
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  # Tool images pinned by digest. Bump deliberately.
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Workflow lint
+        run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE" -color
+      - name: Actions pinned to a commit
+        run: |
+          bad=$(grep -rhoE '^\s*-?\s*uses:\s*[^ #]+' .github/workflows 2>/dev/null \
+            | sed -E 's/^\s*-?\s*uses:\s*//' \
+            | grep -vE '^(\./|docker://)' \
+            | grep -vE '@[0-9a-f]{40}$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Pin these to a full commit SHA (with a # vX.Y.Z comment):"
+            echo "$bad"
+            exit 1
+          fi
+          echo "All actions pinned."
+      - name: No secrets in the tree
+        run: docker run --rm -v "$PWD:/repo" -w /repo "$GITLEAKS_IMAGE" dir . --redact --no-banner --exit-code 1
