@@ -1,0 +1,14 @@
+name: CI
+
+# This repo checks itself with its own hygiene workflow.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    uses: ./.github/workflows/hygiene.yml

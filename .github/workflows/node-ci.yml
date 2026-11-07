@@ -1,0 +1,60 @@
+name: Node check
+
+# Reusable: install with npm ci, run the repo's `npm run check`, then audit runtime dependencies.
+# Every Node repo exposes `check` (lint, typecheck, test, build: whatever applies there).
+#
+#   jobs:
+#     node:
+#       uses: thelankankid/ci/.github/workflows/node-ci.yml@<sha> # v1
+#       with: { working-directory: status }   # optional
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Where package.json lives.
+        type: string
+        default: "."
+      node-version:
+        description: Node major version.
+        type: string
+        default: "22"
+      script:
+        description: The npm script to run.
+        type: string
+        default: check
+      audit-level:
+        description: Fail npm audit (runtime dependencies) at this severity or above; "none" skips it.
+        type: string
+        default: high
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: npm run ${{ inputs.script }}
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: npm run "$SCRIPT"
+      - name: npm audit (runtime dependencies)
+        if: inputs.audit-level != 'none'
+        env:
+          LEVEL: ${{ inputs.audit-level }}
+        run: npm audit --omit=dev --audit-level="$LEVEL"
