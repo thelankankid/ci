@@ -13,7 +13,15 @@ call workflows from a public repo.
 | --- | --- | --- |
 | [`node-ci.yml`](.github/workflows/node-ci.yml) | `npm ci`, `npm run check`, `npm audit --omit=dev` (high and up) | `node / check` |
 | [`hygiene.yml`](.github/workflows/hygiene.yml) | actionlint, every action pinned to a full SHA, gitleaks on the tree | `hygiene / hygiene` |
+| [`terraform-check.yml`](.github/workflows/terraform-check.yml) | `terraform fmt -check`, `init -backend=false`, `validate`; no credentials | `terraform / check` |
+| [`terraform.yml`](.github/workflows/terraform.yml) | `plan` (posted as a PR comment) or `apply` (default branch only), through an AWS role assumed with GitHub OIDC | `terraform / plan`, `terraform / apply` |
 | [`claude.yml`](.github/workflows/claude.yml) | `@claude` on PRs and issues, owner only | (not a check) |
+
+`terraform-check.yml` and `terraform.yml` take `working-directory` (default `terraform`) and `terraform-version`
+(default the latest). `terraform.yml` also takes `action` (`plan` or `apply`), `role-arn` (required; use a read-only
+role for plans and the apply role for applies) and `aws-region` (default `us-east-1`), plus an optional `tf-vars`
+secret: one `NAME=value` per line, exported as `TF_VAR_NAME` and masked. Applies only ever run on the default branch.
+See [`templates/infra.yml`](templates/infra.yml).
 
 `node-ci.yml` takes `working-directory` (default `.`), `node-version` (default `22`), `script` (default `check`)
 and `audit-level` (default `high`; `none` skips the audit).

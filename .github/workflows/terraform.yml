@@ -1,0 +1,148 @@
+name: Terraform
+
+# Reusable: plan or apply one root module with an AWS role assumed through GitHub OIDC (no stored keys).
+# - plan: on a pull request, the plan is posted as a PR comment (updated in place on each push).
+# - apply: only ever from the default branch; run it by hand (workflow_dispatch) as the manual gate.
+#
+#   permissions:
+#     contents: read
+#     id-token: write       # assume the role
+#     pull-requests: write  # plan comment
+#   jobs:
+#     terraform:
+#       uses: thelankankid/ci/.github/workflows/terraform.yml@<sha> # v1
+#       with:
+#         action: plan                              # or apply
+#         working-directory: infra/terraform
+#         role-arn: ${{ vars.TF_PLAN_ROLE_ARN }}    # a read-only role for plans, the apply role for applies
+#       secrets:
+#         tf-vars: |                                # optional: NAME=value per line, exported as TF_VAR_NAME
+#           admin_password=${{ secrets.ADMIN_PASSWORD }}
+#
+# Check name in the calling repo: `<job> / plan` or `<job> / apply`.
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        description: plan or apply.
+        type: string
+        default: plan
+      working-directory:
+        description: Folder holding the root module.
+        type: string
+        default: terraform
+      role-arn:
+        description: The IAM role to assume.
+        type: string
+        required: true
+      aws-region:
+        type: string
+        default: us-east-1
+      terraform-version:
+        type: string
+        default: latest
+    secrets:
+      tf-vars:
+        description: Optional Terraform variables, one NAME=value per line (exported as TF_VAR_NAME).
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    name: plan
+    if: inputs.action == 'plan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+      - name: Terraform variables
+        env:
+          TF_VARS: ${{ secrets.tf-vars }}
+        run: |
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            [ -z "$line" ] && continue
+            name="${line%%=*}" value="${line#*=}"
+            if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then echo "::error::Bad tf-vars line"; exit 1; fi
+            [ -n "$value" ] && echo "::add-mask::$value"
+            echo "TF_VAR_${name}=${value}" >> "$GITHUB_ENV"
+          done <<< "$TF_VARS"
+      - run: terraform init -input=false
+      - id: plan
+        run: terraform plan -input=false -no-color -lock-timeout=5m
+      - name: Comment the plan on the PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+          DIR: ${{ inputs.working-directory }}
+        with:
+          script: |
+            const plan = (process.env.PLAN || "").substring(0, 60000);
+            const tag = `Terraform plan 📖 (${process.env.DIR})`;
+            const body = `#### ${tag}\n<details><summary>Show plan</summary>\n\n\`\`\`terraform\n${plan}\n\`\`\`\n</details>`;
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const prev = comments.find((c) => c.user.type === "Bot" && c.body.includes(tag));
+            if (prev) await github.rest.issues.updateComment({ ...context.repo, comment_id: prev.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+
+  apply:
+    name: apply
+    # Only the default branch is ever applied, whatever the caller's trigger.
+    if: inputs.action == 'apply' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+      - name: Terraform variables
+        env:
+          TF_VARS: ${{ secrets.tf-vars }}
+        run: |
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            [ -z "$line" ] && continue
+            name="${line%%=*}" value="${line#*=}"
+            if ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then echo "::error::Bad tf-vars line"; exit 1; fi
+            [ -n "$value" ] && echo "::add-mask::$value"
+            echo "TF_VAR_${name}=${value}" >> "$GITHUB_ENV"
+          done <<< "$TF_VARS"
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve -lock-timeout=5m

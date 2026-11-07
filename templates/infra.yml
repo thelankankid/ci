@@ -1,0 +1,40 @@
+name: Infra
+
+# Terraform through thelankankid/ci. Plans on PRs that touch the module (as a PR comment) with a read-only role;
+# applies only when run by hand from the default branch (Actions → Infra → Run workflow → apply).
+# Repo variables: TF_PLAN_ROLE_ARN (read-only), TF_ROLE_ARN (apply). The format/validate check lives in ci.yml:
+#   terraform:
+#     uses: thelankankid/ci/.github/workflows/terraform-check.yml@SHA # v1
+#     with: { working-directory: terraform }
+
+on:
+  pull_request:
+    paths: ["terraform/**"]
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [plan, apply]
+        default: plan
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    uses: thelankankid/ci/.github/workflows/terraform.yml@SHA # v1
+    with:
+      action: ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'plan' }}
+      working-directory: terraform
+      role-arn: ${{ (github.event_name == 'workflow_dispatch' && inputs.action == 'apply') && vars.TF_ROLE_ARN || vars.TF_PLAN_ROLE_ARN }}
+    # secrets:
+    #   tf-vars: |
+    #     some_password=${{ secrets.SOME_PASSWORD }}
