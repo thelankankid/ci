@@ -26,6 +26,11 @@ See [`templates/infra.yml`](templates/infra.yml).
 `node-ci.yml` takes `working-directory` (default `.`), `node-version` (default `22`), `script` (default `check`)
 and `audit-level` (default `high`; `none` skips the audit).
 
+Every workflow takes `runs-on` (default `ubuntu-latest`): the runner its jobs use, as a label. A repo with its own
+self-hosted runner passes that label, e.g. `runs-on: ${{ vars.NETLAB_RUNNER || 'ubuntu-latest' }}`, so the shared
+checks stop using Actions minutes. A self-hosted runner needs Docker (hygiene runs actionlint and gitleaks in
+containers) and network access to GitHub and the registries; never point a public repository's workflows at one.
+
 ## Using it in a repo
 
 1. Give the repo an `npm run check` that runs whatever applies there: lint, typecheck, tests, build.

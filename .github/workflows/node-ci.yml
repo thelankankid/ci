@@ -11,6 +11,10 @@ name: Node check
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner to use, as a label (a self-hosted runner's, e.g. netlab) or ubuntu-latest.
+        type: string
+        default: ubuntu-latest
       working-directory:
         description: Where package.json lives.
         type: string
@@ -34,7 +38,7 @@ permissions:
 jobs:
   check:
     name: check
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 20
     defaults:
       run:
