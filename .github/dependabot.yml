@@ -1,0 +1,7 @@
+# The runner image's base (runner/Dockerfile), pinned by digest. Weekly; core-infra then bumps its pin of this repo.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /runner
+    schedule:
+      interval: weekly

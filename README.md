@@ -26,10 +26,17 @@ See [`templates/infra.yml`](templates/infra.yml).
 `node-ci.yml` takes `working-directory` (default `.`), `node-version` (default `22`), `script` (default `check`)
 and `audit-level` (default `high`; `none` skips the audit).
 
-Every workflow takes `runs-on` (default `ubuntu-latest`): the runner its jobs use, as a label. A repo with its own
-self-hosted runner passes that label, e.g. `runs-on: ${{ vars.NETLAB_RUNNER || 'ubuntu-latest' }}`, so the shared
-checks stop using Actions minutes. A self-hosted runner needs Docker (hygiene runs actionlint and gitleaks in
-containers) and network access to GitHub and the registries; never point a public repository's workflows at one.
+Every workflow takes `runs-on` (default `ubuntu-latest`): the runner its jobs use, as a label. Private repos pass
+`runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}`: with the org variable `CI_RUNNER=tlk` their jobs run on the
+org's own runner host ([`runner/`](runner/README.md)) instead of using Actions minutes, and deleting the variable sends
+them back. A self-hosted runner needs Docker (hygiene runs actionlint and gitleaks in containers) and network access
+to GitHub and the registries; never point a public repository's workflows at one.
+
+## The runner host
+
+[`runner/`](runner/README.md) sets up one Ubuntu VM (created by core-infra) with a few runners, each taking one job in
+a fresh container. They register through a GitHub App, so no personal token is involved, and only private repos
+can use them.
 
 ## Using it in a repo
 
