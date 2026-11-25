@@ -1,8 +1,8 @@
 name: CI
 
 # The shared checks (thelankankid/ci). Keep repo-specific jobs below them.
-# Jobs run on the org's own runners when the org variable CI_RUNNER is set (runner/README.md in thelankankid/ci),
-# GitHub's otherwise. Public repos: drop the runs-on lines, GitHub's runners are free for them.
+# Jobs run on our own runner host when the repo variable CI_RUNNER is set to tlk (runner/README.md in
+# thelankankid/ci), on GitHub's otherwise. Public repos: drop the runs-on lines, GitHub's runners are free for them.
 on:
   pull_request:
   push:
