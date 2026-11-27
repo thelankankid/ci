@@ -10,7 +10,7 @@ tailnet; a job that needs it (netlab) joins for itself, as on GitHub's runners.
 
 | File | What |
 | --- | --- |
-| `Dockerfile` | The job image: GitHub's runner image (pinned by digest) plus `gh`, `make`, `zip`, `rsync`, `xz`, `ssh` |
+| `Dockerfile` | The job image: GitHub's runner image (pinned by digest) plus the AWS CLI, Docker Compose, Node.js, `gh`, `make`, `zip`, `rsync`, `xz`, `ssh` |
 | `dispatch` | Polls for queued jobs, starts a one-job runner per job, removes runners whose job went away |
 | `tlk-dispatch.service` | Keeps the dispatcher running |
 | `tlk-runner-prune.*` | Every 4 hours, removes what jobs left in Docker |
@@ -33,7 +33,7 @@ What a job gets:
   the host and in the container, so `docker run -v "$PWD:…"` works. A service container's ports are on
   `host.docker.internal`, not `localhost`.
 - `NET_ADMIN` and `/dev/net/tun`, so `tailscale/github-action` can join the tailnet for that job.
-- Not the tools GitHub's `ubuntu-latest` image preinstalls (AWS CLI, Terraform, language runtimes beyond Python):
+- Not most tools GitHub's `ubuntu-latest` image preinstalls (Terraform, language runtimes beyond Python, browsers):
   use the `setup-*` actions, or add the tool to the `Dockerfile`.
 
 ## Set it up
