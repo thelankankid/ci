@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove what jobs left in Docker (containers, images, volumes, build cache)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# The runner image (label tlk-runner) stays; anything else unused for a day goes.
+ExecStart=/usr/bin/docker container prune -f --filter until=6h
+ExecStart=/usr/bin/docker image prune -af --filter until=24h --filter label!=tlk-runner
+ExecStart=/usr/bin/docker volume prune -af
+ExecStart=/usr/bin/docker builder prune -af --filter until=24h

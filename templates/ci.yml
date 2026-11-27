@@ -1,6 +1,8 @@
 name: CI
 
 # The shared checks (thelankankid/ci). Keep repo-specific jobs below them.
+# Jobs run on our own runner host when the repo variable CI_RUNNER is set to tlk (runner/README.md in
+# thelankankid/ci), on GitHub's otherwise. Public repos: drop the runs-on lines, GitHub's runners are free for them.
 on:
   pull_request:
   push:
@@ -9,10 +11,18 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels the run it replaces; runs on main always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   node:
     uses: thelankankid/ci/.github/workflows/node-ci.yml@SHA # v1
-    # with:
-    #   working-directory: status
+    with:
+      runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+      # working-directory: status
   hygiene:
     uses: thelankankid/ci/.github/workflows/hygiene.yml@SHA # v1
+    with:
+      runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune Docker on the runner host every few hours
+
+[Timer]
+OnBootSec=1h
+OnUnitActiveSec=4h
+
+[Install]
+WantedBy=timers.target
