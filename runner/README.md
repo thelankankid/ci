@@ -10,7 +10,7 @@ tailnet; a job that needs it (netlab) joins for itself, as on GitHub's runners.
 
 | File | What |
 | --- | --- |
-| `Dockerfile` | The job image: GitHub's runner image (pinned by digest) plus the AWS CLI, Docker Compose, `gh`, `make`, `zip`, `rsync`, `xz`, `ssh` |
+| `Dockerfile` | The job image: GitHub's runner image (pinned by digest) plus the AWS CLI, Docker Compose, Node.js, `gh`, `make`, `zip`, `rsync`, `xz`, `ssh` |
 | `dispatch` | Polls for queued jobs, starts a one-job runner per job, removes runners whose job went away |
 | `tlk-dispatch.service` | Keeps the dispatcher running |
 | `tlk-runner-prune.*` | Every 4 hours, removes what jobs left in Docker |
