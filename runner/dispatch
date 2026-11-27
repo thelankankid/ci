@@ -100,7 +100,7 @@ repo_jobs() {
 ours() { docker ps --filter label=tlk.repo "$@"; }
 start_runner() {
   local repo=$1 name work body resp jit id
-  name=tlk-$(hostname -s)-$(date +%s)-$RANDOM
+  name=tlk-$(hostname -s)-$(date +%s)-$BASHPID
   work=$work_root/$name
   # The workspace is at the same path on the host and in the container, so a step's `docker run -v "$PWD:…"`
   # (hygiene's actionlint and gitleaks) mounts the right directory.
@@ -145,11 +145,24 @@ reap() {
   done
 }
 
+# One pass: read every repo's jobs at once (one request at a time per repo took 30-40 s for 8 repos), then start the
+# runners this pass needs together, up to the free slots.
 poll() {
   list_repos || return 1
-  local repo out queued busy all_busy="" mine idle need total complete=1
+  ensure_token || return 1 # before the subshells: a token they refresh wouldn't come back
+  local started; started=$(date +%s)
+  local dir; dir=$(mktemp -d "$state/poll.XXXXXX")
+  local repo
   for repo in $repos; do
-    out=$(repo_jobs "$repo") || { complete=0; continue; }
+    (repo_jobs "$repo" >"$dir/$repo.tmp" && mv "$dir/$repo.tmp" "$dir/$repo") &
+  done
+  wait
+
+  local out queued busy all_busy="" mine idle need complete=1 free
+  local -a want=()
+  for repo in $repos; do
+    if [ ! -f "$dir/$repo" ]; then complete=0; continue; fi
+    out=$(cat "$dir/$repo")
     queued=${out%% *}
     busy=${out#"$queued"}
     all_busy+="$busy"
@@ -158,16 +171,24 @@ poll() {
     # Our containers for this repo not on a job are waiting for one of these.
     idle=$((mine - $(for n in $busy; do [[ $n == tlk-* ]] && echo; done | wc -l)))
     ((idle < 0)) && idle=0
-    need=$((queued - idle))
-    while ((need > 0)); do
-      total=$(ours -q | wc -l)
-      if ((total >= TLK_RUNNERS)); then log "at $TLK_RUNNERS runners; $repo waits"; break 2; fi
-      start_runner "$repo" || break
-      need=$((need - 1))
-    done
+    for ((need = queued - idle; need > 0; need--)); do want+=("$repo"); done
   done
+  rm -rf "$dir"
+
+  free=$((TLK_RUNNERS - $(ours -q | wc -l)))
+  if ((${#want[@]} > free)); then log "at $TLK_RUNNERS runners; $((${#want[@]} - (free > 0 ? free : 0))) job(s) wait"; fi
+  local n=0
+  for repo in "${want[@]}"; do
+    ((n < free)) || break
+    start_runner "$repo" &
+    n=$((n + 1))
+  done
+  wait
+
   # Only with every repo's jobs in hand: a busy runner missing from the list would look idle.
   ((complete)) && reap "$all_busy"
+  local took=$(($(date +%s) - started))
+  ((took > 15)) && log "poll took ${took}s"
   return 0
 }
 
