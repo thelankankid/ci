@@ -25,7 +25,7 @@ on:
   workflow_call:
     inputs:
       runs-on:
-        description: The runner to use, as a label (a self-hosted runner's, e.g. netlab) or ubuntu-latest.
+        description: The runner to use, as a label (our runner host's is tlk) or ubuntu-latest.
         type: string
         default: ubuntu-latest
       action:
