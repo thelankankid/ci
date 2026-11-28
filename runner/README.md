@@ -11,7 +11,7 @@ tailnet; a job that needs it (netlab) joins for itself, as on GitHub's runners.
 | File | What |
 | --- | --- |
 | `Dockerfile` | The job image: GitHub's runner image (pinned by digest) plus the AWS CLI, Docker Compose, Node.js, `gh`, `make`, `zip`, `rsync`, `xz`, `ssh` |
-| `dispatch` | Polls for queued jobs, starts a one-job runner per job, removes runners whose job went away |
+| `dispatch` | Polls for queued jobs, starts a one-job runner per job, removes runners whose job went away, pushes the heartbeat |
 | `tlk-dispatch.service` | Keeps the dispatcher running |
 | `tlk-runner-prune.*` | Every 4 hours, removes what jobs left in Docker |
 | `install.sh` | Sets it all up; safe to run again |
@@ -35,6 +35,14 @@ What a job gets:
 - `NET_ADMIN` and `/dev/net/tun`, so `tailscale/github-action` can join the tailnet for that job.
 - Not most tools GitHub's `ubuntu-latest` image preinstalls (Terraform, language runtimes beyond Python, browsers):
   use the `setup-*` actions, or add the tool to the `Dockerfile`.
+
+## Heartbeat
+
+Once a minute the dispatcher pushes `tlk_runner_*` to Argus (the stack's Influx line endpoint): `up`, `poll_ok`
+(the last pass read GitHub), `busy`, `queued`, `oldest_queued_seconds` and `heartbeat_timestamp_seconds`, labelled
+`app=ci`. Argus alerts when the heartbeat stops (the host is down), a job has waited too long, or GitHub can't be
+read. It needs `TLK_PUSH_URL` in `runner.env` and a metrics:write token in `/etc/tlk-runner/push.curl`
+(`user = "<stack user>:<token>"`); core-infra writes both, with a token Argus mints. Without them nothing is sent.
 
 ## Set it up
 
