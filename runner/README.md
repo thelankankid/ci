@@ -63,10 +63,10 @@ read. It needs `TLK_PUSH_URL` in `runner.env` and a metrics:write token in `/etc
 
 | To | Do |
 | --- | --- |
-| Watch it | `journalctl -u tlk-dispatch -f`; the repo's Settings → Actions → Runners shows its runner during a job |
+| Watch it | Argus alerts on the heartbeat (RunnerHostDown, RunnerPollFailing, RunnerJobsStuck; argus `docs/runbooks.md`). On the VM: `journalctl -u tlk-dispatch -f`. The repo's Settings → Actions → Runners shows its `tlk-…` runner only during a job |
 | See running jobs | `docker ps --filter label=tlk.repo` |
 | Change limits | `TLK_RUNNERS`, `TLK_POLL`, `TLK_IDLE`, `TLK_REPOS` (only these repos) in `/etc/tlk-runner/runner.env`, then `systemctl restart tlk-dispatch` |
-| Update the image | bump this repo's pin in core-infra; the VM is rebuilt from scratch (it holds no state) |
+| Update the image | bump this repo's pin in core-infra and run its apply (Actions → Terraform → apply). The apply waits until no job is running (up to 45 minutes; `force` skips it), then rebuilds the VM from scratch (it holds no state); queued jobs run on the new one |
 | Stop sending a repo's jobs | delete its `CI_RUNNER` variable; queued jobs keep the runner they were queued for |
 
 ## Security
