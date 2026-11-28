@@ -80,20 +80,46 @@ list_repos() {
   repos=$(grep -v '^$' <<<"$out" | sort -u)
   repos_at=$(date +%s)
 }
-# Prints "<queued jobs for us> <busy runner names, space-separated>" for a repo.
+# Prints "<queued jobs for us> <oldest of them, epoch seconds or 0> <busy runner names, space-separated>" for a repo.
 repo_jobs() {
-  local repo=$1 status runs id jobs queued=0 busy=""
+  local repo=$1 status runs id jobs mine queued=0 oldest=0 first busy=""
   for status in queued in_progress; do
     runs=$(api_get "$API/repos/$TLK_OWNER/$repo/actions/runs?status=$status&per_page=30") || return 1
     for id in $(jq -r '.workflow_runs[].id' <<<"$runs"); do
       jobs=$(api_get "$API/repos/$TLK_OWNER/$repo/actions/runs/$id/jobs?filter=latest&per_page=100") || return 1
-      queued=$((queued + $(jq --argjson ours "$labels_json" \
-        '[.jobs[] | select(.status == "queued" and (.labels | length) > 0 and (.labels - $ours) == [])] | length' \
-        <<<"$jobs")))
+      mine=$(jq -c --argjson ours "$labels_json" \
+        '[.jobs[] | select(.status == "queued" and (.labels | length) > 0 and (.labels - $ours) == [])]' <<<"$jobs")
+      queued=$((queued + $(jq length <<<"$mine")))
+      first=$(jq '[.[].created_at // empty | fromdateiso8601] | min // 0' <<<"$mine")
+      if ((first > 0 && (oldest == 0 || first < oldest))); then oldest=$first; fi
       busy+=" $(jq -r '[.jobs[] | select(.status == "in_progress") | .runner_name // empty] | join(" ")' <<<"$jobs")"
     done
   done
-  echo "$queued$busy"
+  echo "$queued $oldest$busy"
+}
+
+# --- Heartbeat ---------------------------------------------------------------------------------------------------
+# Once a minute, to Argus (the stack's Influx line endpoint; Argus alerts on it): alive, whether the last pass read
+# GitHub, our busy runners, the jobs waiting for us and how long the oldest has waited. Only with a push token in
+# TLK_PUSH_AUTH (a curl config, root-only) and TLK_PUSH_URL; without them, nothing is sent.
+PUSH_URL=${TLK_PUSH_URL:-}
+PUSH_AUTH=${TLK_PUSH_AUTH:-/etc/tlk-runner/push.curl}
+pushed_at=0
+heartbeat() {
+  local ok=$1 queued=$2 oldest=$3 now age busy
+  [ -n "$PUSH_URL" ] && [ -s "$PUSH_AUTH" ] || return 0
+  now=$(date +%s)
+  ((now - pushed_at >= 60)) || return 0
+  age=0
+  ((oldest > 0)) && age=$((now - oldest))
+  busy=$(ours -q | wc -l)
+  if curl -fsS -m 20 -K "$PUSH_AUTH" -H 'Content-Type: text/plain' --data-binary \
+    "tlk_runner,app=ci,host=$(hostname -s) up=1,poll_ok=$ok,busy=$busy,queued=$queued,oldest_queued_seconds=$age,heartbeat_timestamp_seconds=$now ${now}000000000" \
+    "$PUSH_URL" >/dev/null; then
+    pushed_at=$now
+  else
+    log "heartbeat push failed"
+  fi
 }
 
 # --- Runners -----------------------------------------------------------------------------------------------------
@@ -158,14 +184,17 @@ poll() {
   done
   wait
 
-  local out queued busy all_busy="" mine idle need complete=1 free
+  local out queued oldest busy all_busy="" mine idle need complete=1 free
+  total_queued=0 total_oldest=0 # globals: the heartbeat reads them
   local -a want=()
   for repo in $repos; do
     if [ ! -f "$dir/$repo" ]; then complete=0; continue; fi
     out=$(cat "$dir/$repo")
-    queued=${out%% *}
-    busy=${out#"$queued"}
+    read -r queued oldest busy <<<"$out"
+    busy=" $busy"
     all_busy+="$busy"
+    total_queued=$((total_queued + queued))
+    if ((oldest > 0 && (total_oldest == 0 || oldest < total_oldest))); then total_oldest=$oldest; fi
     ((queued > 0)) || continue
     mine=$(ours --filter "label=tlk.repo=$repo" -q | wc -l)
     # Our containers for this repo not on a job are waiting for one of these.
@@ -193,7 +222,8 @@ poll() {
 }
 
 log "dispatching for $TLK_OWNER, labels $TLK_LABELS, up to $TLK_RUNNERS runners"
+total_queued=0 total_oldest=0
 while :; do
-  poll || log "poll failed; retrying"
+  if poll; then heartbeat 1 "$total_queued" "$total_oldest"; else log "poll failed; retrying"; heartbeat 0 0 0; fi
   sleep "$POLL"
 done
